@@ -9,7 +9,7 @@ from aiogram.dispatcher.filters import Text
 from aiogram.contrib.fsm_storage.redis import RedisStorage2
 
 from bot import casino, const
-from bot.throttling import ThrottlingMiddleware, rate_limit
+from bot.throttling import ThrottlingMiddleware, throttle_decorator
 
 # Токен берётся из переменной окружения (можно задать через systemd unit)
 token = getenv("BOT_TOKEN")
@@ -29,12 +29,22 @@ logging.basicConfig(level=logging.INFO)
 
 def get_spin_keyboard():
     # noinspection PyTypeChecker
+    """
+    Функция, возвращающая клавиатуру с единственной кнопкой "Испытать удачу!"
+    """
     return types.ReplyKeyboardMarkup([[const.SPIN_TEXT]], resize_keyboard=True)
 
 
-@rate_limit("default")
+@throttle_decorator("default")
 @dp.message_handler(commands="start")
 async def cmd_start(message: types.Message, state: FSMContext):
+    """
+    Функция, обрабатывающая команду /start, которая возвращает сообщение с приветствием, 
+    информацией о правилах игры, текущим счётом и кнопкой "Испытать удачу!"
+
+    :param message: входящее сообщение в Telegram
+    :param state: объект, хранящий информацию о состоянии пользователя
+    """
     start_text = "Добро пожаловать в наше виртуальное казино!\n" \
                  f"У вас {const.START_POINTS} очков. Каждая попытка стоит 1 очко, а за выигрышные комбинации вы получите:\n\n" \
                  "3 одинаковых символа (кроме семёрки) — 7 очков\n" \
@@ -49,18 +59,33 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(start_text, reply_markup=get_spin_keyboard())
 
 
-@rate_limit("default")
+@throttle_decorator("default")
 @dp.message_handler(commands="stop")
 async def cmd_stop(message: types.Message):
+    """
+    Функция, обрабатывающая команду /stop, которая убирает клавиатуру
+    и оставляет пользователю только возможность начать заново с помощью /start,
+    или продолжить играть с помощью /spin
+
+    :param message: входящее сообщение в Telegram
+    """
+
     await message.answer(
         "Клавиатура удалена. Начать заново: /start, вернуть клавиатуру и продолжить: /spin",
         reply_markup=types.ReplyKeyboardRemove()
     )
 
 
-@rate_limit("default")
+@throttle_decorator("default")
 @dp.message_handler(commands="help")
 async def cmd_help(message: types.Message):
+    """
+    Функция, обрабатывающая команду /help, которая отправляет пользователю текст 
+    с информацией о принципах работы казино, примере кода для получения комбинации 
+    по значению от Bot API, а также ссылками на репозитории с кодом бота
+
+    :param message: входящее сообщение в Telegram
+    """
     help_text = "В казино доступно 4 элемента: BAR, виноград, лимон и цифра семь. Комбинаций, соответственно, 64. " \
                 "Для распознавания комбинации используется четверичная система, а пример кода " \
                 "для получения комбинации по значению от Bot API можно увидеть " \
@@ -70,11 +95,20 @@ async def cmd_help(message: types.Message):
     await message.answer(help_text, disable_web_page_preview=True)
 
 
-@rate_limit("spin")
+@throttle_decorator("spin")
 @dp.message_handler(commands="spin")
 @dp.message_handler(Text(equals=const.SPIN_TEXT))
 async def make_spin(message: types.Message, state: FSMContext):
     # Получение текущего счёта пользователя (или значения по умолчанию)
+    """
+    Функция, обрабатывающая команду /spin, которая отправляет игровой автомат,
+    получает комбинацию, проверяет, является ли она выигрышной, и обновляет счёт
+    пользователя. Если счёт пользователя равен нулю, посылает сообщение
+    с предупреждением о нулевом балансе.
+
+    :param message: входящее сообщение в Telegram
+    :param state: объект, хранящий информацию о пользователе
+    """
     user_data = await state.get_data()
     user_score = user_data.get("score", const.START_POINTS)
 
@@ -106,9 +140,16 @@ async def make_spin(message: types.Message, state: FSMContext):
 
 
 async def set_commands(dispatcher):
+    """
+    Функция, устанавливающая команды бота (через setMyCommands)
+
+    :param dispatcher: Dispatcher, который будет вызывать эту функцию
+    """
+
     commands = [
         types.BotCommand(command="start", description="Перезапустить казино"),
-        types.BotCommand(command="spin", description="Показать клавиатуру и сделать бросок"),
+        types.BotCommand(
+            command="spin", description="Показать клавиатуру и сделать бросок"),
         types.BotCommand(command="stop", description="Убрать клавиатуру"),
         types.BotCommand(command="help", description="Справочная информация")
     ]

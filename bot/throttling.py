@@ -6,13 +6,13 @@ from cachetools import TTLCache
 from bot.const import THROTTLE_TIME_OTHER, THROTTLE_TIME_SPIN
 
 # Разные по продолжительности кэши для разных типов действий (запуск игрового автомата или /-команды)
-caches = {
+throttle_caches = {
     "default": TTLCache(maxsize=inf, ttl=THROTTLE_TIME_OTHER),
     "spin": TTLCache(maxsize=inf, ttl=THROTTLE_TIME_SPIN)
 }
 
 
-def rate_limit(key="default"):
+def throttle_decorator(key="default"):
     """
     Декоратор для нанесения троттлинга на хэндлер
 
@@ -48,9 +48,9 @@ class ThrottlingMiddleware(BaseMiddleware):
         # Если такой кэш есть в наличии, то либо добавляем chat_id
         # во временный список и выполняем хэндлер, либо пропускаем вообще
         # Chat_ID можно использовать, т.к. бот не должен работать в группах
-        if throttling_key and throttling_key in caches:
-            if not caches[throttling_key].get(message.chat.id):
-                caches[throttling_key][message.chat.id] = True
+        if throttling_key and throttling_key in throttle_caches:
+            if not throttle_caches[throttling_key].get(message.chat.id):
+                throttle_caches[throttling_key][message.chat.id] = True
                 return
             else:
                 raise CancelHandler
